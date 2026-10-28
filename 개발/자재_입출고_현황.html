@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>자재 입출고 현황</title>
+<link rel="stylesheet" href="자재_입출고_현황.css">
+</head>
+<body>
+<datalist id="categoryList"></datalist>
+<div class="wrap" id="mainWrap">
+  <div class="layout-resize-handle" id="layoutResizeHandle" title="드래그하여 전체 화면 영역 너비 조절" aria-label="전체 영역 너비 조절"></div>
+  <header class="page">
+    <div>
+      <h1>자재 입출고 현황</h1>
+      <div class="sub">입고요청 / 출고요청 칸에 수량을 넣고 엔터(또는 다른 칸 클릭)하면 현재재고에 바로 반영됩니다</div>
+      <div class="save-state" id="saveState">저장된 기록 없음 — 처음 여는 상태입니다</div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="btnLayoutToggle" type="button" title="마우스로 화면 폭과 표 열 너비 조절">↔ 레이아웃</button>
+      <button class="btn" id="btnLayoutReset" type="button" title="레이아웃 기본값 복원">기본 레이아웃</button>
+      <button class="btn" id="btnHistory">입출고 이력</button>
+      <button class="btn" id="btnPurchaseFile">자재구매 신청</button>
+      <button class="btn" id="btnAddNew">+ 새 자재 등록</button>
+    </div>
+  </header>
+
+  <section class="backup-panel" aria-label="데이터 백업 관리">
+    <div class="backup-copy">
+      <div class="backup-title">🛡 데이터 백업 관리</div>
+      <div class="backup-desc">자재 목록과 입출고 이력을 함께 JSON으로 백업합니다. 자동 백업은 이 브라우저 저장소에 최근 기록을 관리하며, 중요한 변경 전에는 수동 백업도 권장합니다.</div>
+      <div class="backup-status" id="backupStatus" aria-live="polite">백업 상태 확인 중…</div>
+    </div>
+    <div class="backup-actions">
+      <button class="btn primary" id="btnBackupNow" type="button">⬇ 지금 백업</button>
+      <button class="btn" id="btnRestoreBackup" type="button">백업 복원</button>
+      <input class="backup-file-input" id="backupFileInput" type="file" accept=".json,application/json">
+    </div>
+  </section>
+
+  <div class="toolbar">
+    <div class="search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="searchInput" type="text" placeholder="자재명 또는 ERP코드로 검색">
+      <button class="search-clear" id="btnClearSearch" type="button" title="검색어 지우기" aria-label="검색어 지우기" hidden>✕</button>
+    </div>
+    <button class="btn filter-toggle" id="btnFilterPurchase" type="button" title="구매가 필요하다고 표시해둔 자재만 따로 볼 수 있습니다">🛒 구매 필요 <span class="count-badge" id="purchaseCount">0</span></button>
+    <button class="btn filter-toggle" id="btnFilterMismatch" type="button" title="현재재고와 ERP재고가 다른 자재만 따로 볼 수 있습니다">⚠ 재고 불일치 <span class="count-badge" id="mismatchCount">0</span></button>
+    <div class="legend">
+      <span><i style="background:var(--success)"></i>ERP 해야함</span>
+      <span><i style="background:var(--ink-faint)"></i>ERP 하지 않음</span>
+      <span><i style="background:var(--warning)"></i>재고 부족 임박(10개 이하)</span>
+      <span><i style="background:var(--danger)"></i>재고 부족(0개 이하)</span>
+      <span><i style="background:var(--danger)"></i>ERP재고 불일치</span>
+    </div>
+  </div>
+
+  <div class="board">
+    <table class="list">
+      <thead>
+        <tr>
+          <th class="col-drag"></th>
+          <th class="col-name">자재명</th>
+          <th>ERP코드</th>
+          <th style="text-align:right">현재재고</th>
+          <th>입고요청</th>
+          <th>출고요청</th>
+          <th>ERP처리</th>
+          <th style="text-align:right" title="ERP 시스템상의 재고 수량 (현재재고와 비교됩니다)">ERP재고</th>
+          <th>구분</th>
+          <th>비고</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="emptyState" hidden>표시할 자재가 없습니다.</div>
+  </div>
+
+  <footer class="hint">데이터는 이 PC의 이 브라우저에만 자동 저장됩니다 · 자재명을 클릭하면 그 자재의 입출고 이력을 볼 수 있습니다 (이름 옆 ✎ 아이콘으로 수정) · 입고/출고요청을 넣으면 ERP처리가 "해야함"이고 ERP재고가 입력된 자재는 ERP재고도 같은 수량만큼 함께 증감합니다 · ERP재고 칸에 ERP상 수량을 입력하면 현재재고와 자동 비교해 "일치"/"차이"를 표시하고, 상단 "⚠ 재고 불일치" 버튼으로 다른 자재만 모아볼 수 있습니다 · 현재재고·ERP재고·ERP코드·비고·구분은 칸을 클릭하면 바로 원하는 내용으로 직접 수정할 수 있습니다 (재고 직접 수정은 이력에 남지 않습니다, 구분은 기존에 입력했던 값이 자동완성으로 제안됩니다) · 각 행의 🛒 아이콘을 클릭하면 "구매 필요"로 표시할 수 있고, 상단의 "🛒 구매 필요" 버튼을 누르면 그렇게 표시한 자재만 따로 볼 수 있습니다 · 맨 왼쪽 ⠿ 아이콘을 마우스로 눌러 드래그하면 자재 순서를 원하는 대로 바꿀 수 있습니다</footer>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h2 id="modalTitle">새 자재 등록</h2>
+    <div class="field">
+      <label for="newName">자재명 *</label>
+      <input id="newName" type="text" placeholder="예) B900 표출기 메인보드">
+    </div>
+    <div class="field">
+      <label for="newErp">ERP코드</label>
+      <input id="newErp" type="text" placeholder="아직 없으면 비워두세요 (나중에 표에서 클릭해 입력 가능)">
+    </div>
+    <div class="field">
+      <label for="newStock">시작 재고</label>
+      <input id="newStock" type="number" min="0" step="any" placeholder="0">
+    </div>
+    <div class="field">
+      <label for="newErpStock">ERP재고</label>
+      <input id="newErpStock" type="number" step="any" placeholder="ERP상 재고 수량 (모르면 비워두세요)">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="newErpProcessed">ERP처리</label>
+        <select id="newErpProcessed">
+          <option value="ㅇ">해야함</option>
+          <option value="하지 않음">하지 않음</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="newCategory">구분</label>
+        <input id="newCategory" type="text" list="categoryList" placeholder="예) 버스수리자재, 버스원자재 등 직접 입력">
+      </div>
+    </div>
+    <div class="field">
+      <label for="newNote">비고</label>
+      <input id="newNote" type="text" placeholder="선택 입력">
+    </div>
+    <div class="field field-checkbox">
+      <label for="newNeedPurchase"><input id="newNeedPurchase" type="checkbox"> 등록과 동시에 "구매 필요"로 표시</label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="btnCancelAdd" type="button">취소</button>
+      <button class="btn primary" id="btnConfirmAdd" type="button">등록</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="confirmOverlay" hidden>
+  <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <h2 id="confirmTitle">삭제하시겠습니까?</h2>
+    <p class="confirm-body" id="confirmBody"></p>
+    <div class="modal-actions">
+      <button class="btn" id="btnCancelDelete" type="button">취소</button>
+      <button class="btn danger" id="btnConfirmDelete" type="button">삭제</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="historyOverlay" hidden>
+  <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
+    <h2 id="historyTitle">입출고 이력</h2>
+    <button class="history-back-link" id="historyBackLink" type="button" hidden>← 전체 이력 보기</button>
+    <div class="history-wrap">
+      <table class="history-table" id="historyTable">
+        <thead>
+          <tr>
+            <th>시간</th>
+            <th>자재명</th>
+            <th>구분</th>
+            <th style="text-align:right">수량</th>
+            <th style="text-align:right">처리후재고</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="historyRows"></tbody>
+      </table>
+      <div class="empty" id="historyEmpty" hidden>아직 입출고 이력이 없습니다.</div>
+    </div>
+    <div class="modal-actions" style="justify-content:space-between">
+      <button class="btn" id="btnClearHistory" type="button">이력 전체 지우기</button>
+      <button class="btn primary" id="btnCloseHistory" type="button">닫기</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="purchaseFileOverlay" hidden>
+  <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="purchaseFileTitle">
+    <h2 id="purchaseFileTitle">자재구매 신청 폴더</h2>
+
+    <div id="dirConnectView" class="dir-connect" hidden>
+      <p>컴퓨터의 폴더를 연결하면, 그 안의 파일을 이 프로그램에서 직접 열람·추가·삭제할 수 있어요.<br>엑셀 파일은 클릭하면 표로 바로 열려서 여기서 수정하고 저장할 수 있어요.</p>
+      <button class="btn primary" id="btnConnectDir" type="button">폴더 연결</button>
+    </div>
+
+    <div id="dirBrowserView" hidden>
+      <div class="dir-nav">
+        <button class="btn" id="btnDirUp" type="button" hidden>← 뒤로가기</button>
+        <div class="dir-crumb" id="dirCrumb"></div>
+      </div>
+      <div class="dir-toolbar">
+        <button class="btn primary" id="btnAddFileToDir" type="button">+ 파일 추가</button>
+        <input type="file" id="dirFileInput" hidden>
+        <button class="btn" id="btnNewSubfolder" type="button">+ 새 폴더</button>
+        <button class="btn" id="btnReconnectDir" type="button">다른 폴더 연결</button>
+      </div>
+      <div class="history-wrap">
+        <table class="history-table" id="dirTable">
+          <thead><tr><th>이름</th><th>정보</th><th></th></tr></thead>
+          <tbody id="dirRows"></tbody>
+        </table>
+        <div class="dir-empty-msg" id="dirEmpty" hidden>이 폴더는 비어 있습니다.</div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn primary" id="btnClosePurchaseFile" type="button">닫기</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="sheetEditorOverlay" hidden>
+  <div class="modal xwide sheet-modal" role="dialog" aria-modal="true" aria-labelledby="sheetEditorTitle">
+    <h2 id="sheetEditorTitle">파일명</h2>
+    <div class="sheet-tabs" id="sheetTabs"></div>
+    <div class="sheet-toolbar">
+      <button class="btn" id="btnAddSheetRow" type="button">+ 행 추가</button>
+      <span class="sheet-dirty" id="sheetDirtyMark" hidden>저장 안 된 변경사항이 있습니다</span>
+    </div>
+    <div class="sheet-grid-wrap" id="sheetGridWrap">
+      <table class="sheet-grid" id="sheetGrid"></table>
+    </div>
+    <div class="modal-actions" style="justify-content:space-between">
+      <button class="btn" id="btnCloseSheetEditor" type="button">닫기</button>
+      <button class="btn primary" id="btnSaveSheet" type="button">저장</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-host" id="toastHost"></div>
+
+<script src="자재_입출고_현황.js"></script>
+</body>
+</html>
